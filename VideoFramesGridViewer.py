@@ -362,7 +362,8 @@ class MovieGridViewer(QtWidgets.QWidget):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Video Frames Grid Viewer with Pagination and multiprocessing")
-    parser.add_argument("--Path", type=str, required=True, help="Path + filename of video")
+    parser.add_argument("--Path", type=str, required=True, help="Path of video")
+    parser.add_argument("--Name", type=str, required=True, help="Name of video")
     parser.add_argument("--Cols", type=int, default=7, help="Number of columns per page")
     parser.add_argument("--Rows", type=int, default=5, help="Number of rows per page")
     parser.add_argument("--Workers", type=int, default=4, help="Number of parallel worker processes")
@@ -371,7 +372,7 @@ def main():
 
     multiprocessing.set_start_method('spawn', force=True)  # important under Windows
     app = QtWidgets.QApplication(sys.argv)
-    viewer = MovieGridViewer(args.Path, args.Cols, args.Rows, args.Workers, args.Pages)
+    viewer = MovieGridViewer(args.Path+"/"+args.Name, args.Cols, args.Rows, args.Workers, args.Pages)
     sys.exit(app.exec_())
 
 
