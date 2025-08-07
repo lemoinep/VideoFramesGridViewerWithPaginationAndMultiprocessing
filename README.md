@@ -4,4 +4,4 @@ Users can navigate between pages via a cursor, mouse wheel or keyboard shortcuts
 The interface has a personalized appearance, including stylized sliders and labels for an improved user experience. 
 This tool is particularly useful for preview and quickly analyze video content by frame.
 
-"# VideoFramesGridViewerWithPaginationAndMultiprocessing" 
+
