@@ -118,8 +118,8 @@ class MovieGridViewer(QtWidgets.QWidget):
 
         video_dir = os.path.dirname(video_path)
         video_name = os.path.basename(video_path)
-        #cache_dir_name = video_name.replace(" ", "_").replace(".", "_") + "_cache"
-        cache_dir_name = "cache_"+video_name.replace(" ", "_").replace(".", "_") 
+        cache_dir_name = video_name.replace(" ", "_").replace(".", "_") + "_cache"
+        #cache_dir_name = "cache_"+video_name.replace(" ", "_").replace(".", "_") 
         self.cache_dir = os.path.join(video_dir, cache_dir_name)
         os.makedirs(self.cache_dir, exist_ok=True)
 
