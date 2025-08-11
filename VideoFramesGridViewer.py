@@ -9,9 +9,11 @@
 # for preview and quickly analyze video content by frame.
 
 import sys
+import os
 import cv2
 import numpy as np
 import datetime
+import configparser
 from PyQt5 import QtWidgets, QtGui, QtCore
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
@@ -112,65 +114,29 @@ class MovieGridViewer(QtWidgets.QWidget):
     def __init__(self, video_path, cols, rows, num_workers, max_pages=None):
         super().__init__()
         self.video_path = video_path
-        self.cols = cols
-        self.rows = rows
         self.num_workers = num_workers
+
+        video_dir = os.path.dirname(video_path)
+        video_name = os.path.basename(video_path)
+        #cache_dir_name = video_name.replace(" ", "_").replace(".", "_") + "_cache"
+        cache_dir_name = "cache_"+video_name.replace(" ", "_").replace(".", "_") 
+        self.cache_dir = os.path.join(video_dir, cache_dir_name)
+        os.makedirs(self.cache_dir, exist_ok=True)
+
+        self.config_path = os.path.join(self.cache_dir, "config.ini")
+        self.config = configparser.ConfigParser()
+        self.load_or_initialize_config(cols, rows, max_pages)
+
+        self.cols = int(self.config['GRID']['cols'])
+        self.rows = int(self.config['GRID']['rows'])
+        pages_conf = self.config['GRID']['pages']
+        self.max_pages = int(pages_conf) if pages_conf != 'None' else None
+
         self.setWindowTitle("Video Frames Grid Viewer")
         self.setStyleSheet("background-color: #333333;")
 
         self.total_per_page = self.cols * self.rows
-        self.all_thumbnails_data = []  # List of (frame_no, image, timestamp)
         self.current_page = 1
-        self.max_pages = max_pages
-
-        self.v_layout = QtWidgets.QVBoxLayout()
-        self.grid_layout = QtWidgets.QGridLayout()
-        self.grid_layout.setSpacing(10)
-        self.grid_layout.setContentsMargins(20, 20, 20, 20)
-
-        self.v_layout.addLayout(self.grid_layout)
-
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
-        self.slider.setTickInterval(1)
-
-        # Style personnalisé du slider
-        self.slider.setStyleSheet("""
-        QSlider::groove:horizontal {
-            border: 1px solid #999999;
-            height: 8px;
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                        stop:0 #b1b1b1, stop:1 #c4c4c4);
-            margin: 2px 0;
-            border-radius: 4px;
-        }
-        QSlider::handle:horizontal {
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                                        stop:0 #b4b4b4, stop:1 #8f8f8f);
-            border: 1px solid #5c5c5c;
-            width: 18px;
-            margin: -5px 0;
-            border-radius: 9px;
-        }
-        QSlider::handle:horizontal:hover {
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                                        stop:0 #d9d9d9, stop:1 #bfbfbf);
-        }
-        QSlider::handle:horizontal:pressed {
-            background: #ffaa00;
-            border: 1px solid #ff8800;
-        }
-        """)
-
-        self.slider.valueChanged.connect(self.on_slider_change)
-        self.v_layout.addWidget(self.slider)
-
-        self.page_label = QtWidgets.QLabel("")
-        self.page_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.page_label.setStyleSheet("color: white;")  # Texte en blanc
-        self.v_layout.addWidget(self.page_label)
-
-        self.setLayout(self.v_layout)
 
         cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():
@@ -217,6 +183,14 @@ class MovieGridViewer(QtWidgets.QWidget):
         max_vignettes = self.total_pages * self.total_per_page
         self.all_frames_to_extract = self.all_frames_to_extract[:max_vignettes]
 
+        self.all_thumbnails_data = []  
+
+        self.v_layout = QtWidgets.QVBoxLayout()
+        self.grid_layout = QtWidgets.QGridLayout()
+        self.grid_layout.setSpacing(10)
+        self.grid_layout.setContentsMargins(20, 20, 20, 20)
+        self.v_layout.addLayout(self.grid_layout)
+
         self.page_thumbnails = []
         for i in range(self.total_per_page):
             thumb = ThumbnailWidget(self.thumb_size)
@@ -225,8 +199,46 @@ class MovieGridViewer(QtWidgets.QWidget):
             self.grid_layout.addWidget(thumb, row, col)
             self.page_thumbnails.append(thumb)
 
-        self.pool = ProcessPoolExecutor(max_workers=self.num_workers)
-        self.load_all_thumbnails()
+        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
+        self.slider.setTickInterval(1)
+        self.slider.setStyleSheet("""
+        QSlider::groove:horizontal {
+            border: 1px solid #999999;
+            height: 8px;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                        stop:0 #b1b1b1, stop:1 #c4c4c4);
+            margin: 2px 0;
+            border-radius: 4px;
+        }
+        QSlider::handle:horizontal {
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                        stop:0 #b4b4b4, stop:1 #8f8f8f);
+            border: 1px solid #5c5c5c;
+            width: 18px;
+            margin: -5px 0;
+            border-radius: 9px;
+        }
+        QSlider::handle:horizontal:hover {
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                        stop:0 #d9d9d9, stop:1 #bfbfbf);
+        }
+        QSlider::handle:horizontal:pressed {
+            background: #ffaa00;
+            border: 1px solid #ff8800;
+        }
+        """)
+        self.slider.valueChanged.connect(self.on_slider_change)
+        self.v_layout.addWidget(self.slider)
+
+        self.page_label = QtWidgets.QLabel("")
+        self.page_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.page_label.setStyleSheet("color: white;")
+        self.v_layout.addWidget(self.page_label)
+
+        self.setLayout(self.v_layout)
+
+        self.load_thumbnails_from_cache_or_extract()
 
         self.slider.setMinimum(1)
         self.slider.setMaximum(self.total_pages)
@@ -234,6 +246,57 @@ class MovieGridViewer(QtWidgets.QWidget):
         self.update_page_label()
 
         self.showFullScreen()
+
+    def load_or_initialize_config(self, cols, rows, max_pages):
+        if os.path.exists(self.config_path):
+            self.config.read(self.config_path)
+            saved_cols = self.config.getint('GRID', 'cols', fallback=None)
+            saved_rows = self.config.getint('GRID', 'rows', fallback=None)
+            saved_pages = self.config.get('GRID', 'pages', fallback=None)
+            if saved_pages == 'None':
+                saved_pages = None
+            else:
+                saved_pages = int(saved_pages)
+            if saved_cols != cols or saved_rows != rows or saved_pages != max_pages:
+                self.config['GRID'] = {'cols': str(cols), 'rows': str(rows), 'pages': str(max_pages)}
+                with open(self.config_path, 'w') as f:
+                    self.config.write(f)
+                self.clear_cache()
+            else:
+                pass
+        else:
+            self.config['GRID'] = {'cols': str(cols), 'rows': str(rows), 'pages': str(max_pages)}
+            with open(self.config_path, 'w') as f:
+                self.config.write(f)
+
+    def clear_cache(self):
+        for fname in os.listdir(self.cache_dir):
+            if fname.endswith(".png") and fname != "config.ini":
+                try:
+                    os.remove(os.path.join(self.cache_dir, fname))
+                except Exception:
+                    pass
+        self.all_thumbnails_data = []
+
+    def load_thumbnails_from_cache_or_extract(self):
+        loaded_count = 0
+        self.all_thumbnails_data = []
+        for idx, frame_no in enumerate(self.all_frames_to_extract):
+            cache_file = os.path.join(self.cache_dir, f"thumb_{frame_no}.png")
+            if os.path.exists(cache_file):
+
+                img = cv2.imread(cache_file)
+                timestamp = str(datetime.timedelta(seconds=frame_no / self.fps))
+                self.all_thumbnails_data.append((frame_no, img, timestamp))
+                loaded_count += 1
+            else:
+                self.all_thumbnails_data.append((frame_no, None, None))
+
+        if loaded_count < len(self.all_frames_to_extract):
+            self.pool = ProcessPoolExecutor(max_workers=self.num_workers)
+            self.load_all_thumbnails()
+        else:
+            self.load_current_page()
 
     def load_all_thumbnails(self):
         params_list = [(self.video_path, frame_no, self.thumb_size, self.fps) for frame_no in self.all_frames_to_extract]
@@ -250,6 +313,9 @@ class MovieGridViewer(QtWidgets.QWidget):
             frame_no, img, timestamp = None, None, None
 
         if img is not None:
+            cache_file = os.path.join(self.cache_dir, f"thumb_{frame_no}.png")
+            cv2.imwrite(cache_file, img)
+
             while len(self.all_thumbnails_data) <= idx:
                 self.all_thumbnails_data.append((None, None, None))
             self.all_thumbnails_data[idx] = (frame_no, img, timestamp)
@@ -271,12 +337,10 @@ class MovieGridViewer(QtWidgets.QWidget):
                 self.page_thumbnails[page_idx].setText("Loading...")
             else:
                 self.page_thumbnails[page_idx].set_frame(frame_no, img, timestamp)
-
                 try:
                     self.page_thumbnails[page_idx].clicked.disconnect()
                 except TypeError:
                     pass
-
                 self.page_thumbnails[page_idx].clicked.connect(self.open_frame_viewer)
 
     def on_slider_change(self, value):
@@ -294,13 +358,10 @@ class MovieGridViewer(QtWidgets.QWidget):
                 frame_no, img, timestamp = self.all_thumbnails_data[global_idx]
                 if img is not None:
                     self.page_thumbnails[i].set_frame(frame_no, img, timestamp)
-
-                    # Déconnecter avant reconnexion
                     try:
                         self.page_thumbnails[i].clicked.disconnect()
                     except TypeError:
                         pass
-
                     self.page_thumbnails[i].clicked.connect(self.open_frame_viewer)
                 else:
                     self.page_thumbnails[i].setText("Loading...")
@@ -312,39 +373,48 @@ class MovieGridViewer(QtWidgets.QWidget):
     def update_page_label(self):
         self.page_label.setText(f"Page {self.current_page} / {self.total_pages}")
 
-    def open_frame_viewer(self, frame_number, frame_img):
-        self.viewer = FrameViewer(frame_number, frame_img)
+    #def open_frame_viewer(self, frame_number, frame_img):
+    #    self.viewer = FrameViewer(frame_number, frame_img)
+    #    self.viewer.show()
+        
+    def open_frame_viewer(self, frame_number, _):
+        cap = cv2.VideoCapture(self.video_path)
+        if not cap.isOpened():
+            QtWidgets.QMessageBox.critical(self, "Error", "Cannot open video to load high-res frame.")
+            return
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+        ret, frame = cap.read()
+        cap.release()
+        if not ret:
+            QtWidgets.QMessageBox.critical(self, "Error", f"Cannot read frame {frame_number} in high-res.")
+            return
+        self.viewer = FrameViewer(frame_number, frame)
         self.viewer.show()
+
 
     def keyPressEvent(self, event):
         key = event.key()
-
         if key == QtCore.Qt.Key_Escape:
             if hasattr(self, "pool"):
                 self.pool.shutdown(wait=False)
             self.close()
-
         elif key == QtCore.Qt.Key_Space:
             if self.current_page < self.total_pages:
                 self.current_page += 1
                 self.slider.setValue(self.current_page)
-
         elif key == QtCore.Qt.Key_4:
             if self.current_page > 1:
                 self.current_page -= 1
                 self.slider.setValue(self.current_page)
-
         elif key == QtCore.Qt.Key_6:
             if self.current_page < self.total_pages:
                 self.current_page += 1
                 self.slider.setValue(self.current_page)
-
         else:
             super().keyPressEvent(event)
 
     def wheelEvent(self, event):
         delta = event.angleDelta().y()
-
         if delta < 0:
             if self.current_page < self.total_pages:
                 self.current_page += 1
@@ -361,18 +431,19 @@ class MovieGridViewer(QtWidgets.QWidget):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Video Frames Grid Viewer with Pagination and multiprocessing")
-    parser.add_argument("--Path", type=str, required=True, help="Path of video")
-    parser.add_argument("--Name", type=str, required=True, help="Name of video")
+    parser = argparse.ArgumentParser(description="Video Frames Grid Viewer with Pagination, multiprocessing and cache")
+    parser.add_argument("--Path", type=str, required=True, help="Path of video directory")
+    parser.add_argument("--Name", type=str, required=True, help="Name of video file")
     parser.add_argument("--Cols", type=int, default=7, help="Number of columns per page")
     parser.add_argument("--Rows", type=int, default=5, help="Number of rows per page")
     parser.add_argument("--Workers", type=int, default=4, help="Number of parallel worker processes")
     parser.add_argument("--Pages", type=int, default=None, help="Number of pages to display (optional)")
     args = parser.parse_args()
 
-    multiprocessing.set_start_method('spawn', force=True)  # important under Windows
+    multiprocessing.set_start_method('spawn', force=True)  
     app = QtWidgets.QApplication(sys.argv)
-    viewer = MovieGridViewer(args.Path+"/"+args.Name, args.Cols, args.Rows, args.Workers, args.Pages)
+    video_full_path = os.path.join(args.Path, args.Name)
+    viewer = MovieGridViewer(video_full_path, args.Cols, args.Rows, args.Workers, args.Pages)
     sys.exit(app.exec_())
 
 
