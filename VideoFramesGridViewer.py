@@ -1,7 +1,5 @@
 # Author(s): Dr. Patrick Lemoine
-
 # Video Frames Grid Viewer with Pagination and multiprocessing
-
 # Objective: This program is a video frame viewer of video frames which allows users to travel a video by displaying miniatures of frames arranged in 
 # a gate format with pagination. It effectively extracts video frames using multiproaches, showing a selectable number of frames per page.
 # Users can navigate between pages via a cursor, mouse wheel or keyboard shortcuts, and click on any sticker to open a detailed view of the selected frame.
@@ -14,10 +12,15 @@ import cv2
 import numpy as np
 import datetime
 import configparser
+from PIL import Image, ImageQt
+from pillow_heif import register_heif_opener
+import pillow_avif  # AVIF support plugin for Pillow
 from PyQt5 import QtWidgets, QtGui, QtCore
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
 
+# Register HEIF opener (no register_avif_opener in newer pillow-heif)
+register_heif_opener()
 
 def extract_thumbnail(params):
     video_path, frame_no, thumb_size, fps = params
@@ -35,10 +38,8 @@ def extract_thumbnail(params):
     timestamp = str(datetime.timedelta(seconds=frame_no / fps))
     return frame_no, thumb_img, timestamp
 
-
 class ThumbnailWidget(QtWidgets.QLabel):
     clicked = QtCore.pyqtSignal(int, np.ndarray)
-
     def __init__(self, thumb_size, parent=None):
         super().__init__(parent)
         self.frame_number = None
@@ -91,7 +92,6 @@ class ThumbnailWidget(QtWidgets.QLabel):
         if event.button() == QtCore.Qt.LeftButton and self.frame_img is not None:
             self.clicked.emit(self.frame_number, self.frame_img)
 
-
 class FrameViewer(QtWidgets.QWidget):
     def __init__(self, frame_number, frame_img):
         super().__init__()
@@ -109,40 +109,33 @@ class FrameViewer(QtWidgets.QWidget):
         self.resize(820, 620)
         self.show()
 
-
 class MovieGridViewer(QtWidgets.QWidget):
-    def __init__(self, video_path, cols, rows, num_workers, max_pages=None):
+    def __init__(self, video_path, cols, rows, num_workers, max_pages=None, thumbnail_format="PNG"):
         super().__init__()
         self.video_path = video_path
         self.num_workers = num_workers
+        self.thumbnail_format = thumbnail_format.upper()  # "PNG", "HEIF" or "AVIF"
 
         video_dir = os.path.dirname(video_path)
         video_name = os.path.basename(video_path)
         cache_dir_name = video_name.replace(" ", "_").replace(".", "_") + "_cache"
-        #cache_dir_name = "cache_"+video_name.replace(" ", "_").replace(".", "_") 
         self.cache_dir = os.path.join(video_dir, cache_dir_name)
         os.makedirs(self.cache_dir, exist_ok=True)
-
         self.config_path = os.path.join(self.cache_dir, "config.ini")
         self.config = configparser.ConfigParser()
         self.load_or_initialize_config(cols, rows, max_pages)
-
         self.cols = int(self.config['GRID']['cols'])
         self.rows = int(self.config['GRID']['rows'])
         pages_conf = self.config['GRID']['pages']
         self.max_pages = int(pages_conf) if pages_conf != 'None' else None
-
         self.setWindowTitle("Video Frames Grid Viewer")
         self.setStyleSheet("background-color: #333333;")
-
         self.total_per_page = self.cols * self.rows
         self.current_page = 1
-
         cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():
             QtWidgets.QMessageBox.critical(self, "Error", "Cannot open video file.")
             sys.exit(1)
-
         self.frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.fps = cap.get(cv2.CAP_PROP_FPS)
         self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -151,13 +144,10 @@ class MovieGridViewer(QtWidgets.QWidget):
 
         screen_rect = QtWidgets.QApplication.primaryScreen().availableGeometry()
         screen_width, screen_height = screen_rect.width(), screen_rect.height()
-
         total_spacing_x = (self.cols - 1) * 10 + 40
         total_spacing_y = (self.rows - 1) * 10 + 70
-
         thumb_width = (screen_width - total_spacing_x) // self.cols
         thumb_height = int(thumb_width * self.height / self.width) + 20
-
         total_height = self.rows * thumb_height + total_spacing_y
         if total_height > screen_height:
             scale = screen_height / total_height
@@ -165,15 +155,12 @@ class MovieGridViewer(QtWidgets.QWidget):
             thumb_height = int(thumb_height * scale)
 
         self.thumb_size = (thumb_width, thumb_height)
-
         default_pages = 10
         pages_to_use = self.max_pages if (self.max_pages is not None and self.max_pages > 0) else default_pages
         approx_total_vignettes = self.total_per_page * pages_to_use
-
         step = max(1, (self.frame_count - 1) // (approx_total_vignettes - 1))
         self.all_frames_to_extract = [i * step for i in range(approx_total_vignettes)]
         self.all_frames_to_extract[-1] = self.frame_count - 1
-
         calculated_total_pages = (len(self.all_frames_to_extract) + self.total_per_page - 1) // self.total_per_page
         if self.max_pages is not None and self.max_pages > 0:
             self.total_pages = min(calculated_total_pages, self.max_pages)
@@ -183,7 +170,7 @@ class MovieGridViewer(QtWidgets.QWidget):
         max_vignettes = self.total_pages * self.total_per_page
         self.all_frames_to_extract = self.all_frames_to_extract[:max_vignettes]
 
-        self.all_thumbnails_data = []  
+        self.all_thumbnails_data = []
 
         self.v_layout = QtWidgets.QVBoxLayout()
         self.grid_layout = QtWidgets.QGridLayout()
@@ -244,7 +231,6 @@ class MovieGridViewer(QtWidgets.QWidget):
         self.slider.setMaximum(self.total_pages)
         self.slider.setValue(1)
         self.update_page_label()
-
         self.showFullScreen()
 
     def load_or_initialize_config(self, cols, rows, max_pages):
@@ -262,8 +248,6 @@ class MovieGridViewer(QtWidgets.QWidget):
                 with open(self.config_path, 'w') as f:
                     self.config.write(f)
                 self.clear_cache()
-            else:
-                pass
         else:
             self.config['GRID'] = {'cols': str(cols), 'rows': str(rows), 'pages': str(max_pages)}
             with open(self.config_path, 'w') as f:
@@ -271,7 +255,7 @@ class MovieGridViewer(QtWidgets.QWidget):
 
     def clear_cache(self):
         for fname in os.listdir(self.cache_dir):
-            if fname.endswith(".png") and fname != "config.ini":
+            if (fname.endswith(".png") or fname.endswith(".heif") or fname.endswith(".avif")) and fname != "config.ini":
                 try:
                     os.remove(os.path.join(self.cache_dir, fname))
                 except Exception:
@@ -281,17 +265,23 @@ class MovieGridViewer(QtWidgets.QWidget):
     def load_thumbnails_from_cache_or_extract(self):
         loaded_count = 0
         self.all_thumbnails_data = []
+        ext = self.thumbnail_format.lower()
         for idx, frame_no in enumerate(self.all_frames_to_extract):
-            cache_file = os.path.join(self.cache_dir, f"thumb_{frame_no}.png")
+            cache_file = os.path.join(self.cache_dir, f"thumb_{frame_no}.{ext}")
             if os.path.exists(cache_file):
-
-                img = cv2.imread(cache_file)
-                timestamp = str(datetime.timedelta(seconds=frame_no / self.fps))
-                self.all_thumbnails_data.append((frame_no, img, timestamp))
-                loaded_count += 1
+                try:
+                    pil_img = Image.open(cache_file).convert('RGB')
+                    qimg = ImageQt.ImageQt(pil_img)  # Convert PIL Image to QImage
+                    # Convert PIL Image to OpenCV BGR ndarray for internal use
+                    img = np.array(pil_img)[:, :, ::-1].copy()
+                    timestamp = str(datetime.timedelta(seconds=frame_no / self.fps))
+                    self.all_thumbnails_data.append((frame_no, img, timestamp))
+                    loaded_count += 1
+                except Exception as e:
+                    print(f"Erreur chargement image {cache_file}: {e}")
+                    self.all_thumbnails_data.append((frame_no, None, None))
             else:
                 self.all_thumbnails_data.append((frame_no, None, None))
-
         if loaded_count < len(self.all_frames_to_extract):
             self.pool = ProcessPoolExecutor(max_workers=self.num_workers)
             self.load_all_thumbnails()
@@ -311,15 +301,34 @@ class MovieGridViewer(QtWidgets.QWidget):
             frame_no, img, timestamp = fut.result()
         except Exception:
             frame_no, img, timestamp = None, None, None
-
         if img is not None:
-            cache_file = os.path.join(self.cache_dir, f"thumb_{frame_no}.png")
-            cv2.imwrite(cache_file, img)
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(img_rgb)
+            ext = self.thumbnail_format.lower()
+            cache_file = os.path.join(self.cache_dir, f"thumb_{frame_no}.{ext}")
+            try:
+                if self.thumbnail_format in ["HEIF", "AVIF"]:
+                    pil_img.save(cache_file, format=self.thumbnail_format, quality=90)
+                else:
+                    pil_img.save(cache_file, format="PNG")
+            except Exception as e:
+                fallback_path = os.path.join(self.cache_dir, f"thumb_{frame_no}.png")
+                pil_img.save(fallback_path, format="PNG")
+                ext = "png"
+                cache_file = fallback_path
+                print(f"Warning: saving thumbnail in {self.thumbnail_format} failed for frame {frame_no}, fallback to PNG. Error: {e}")
+
+            # Reload PIL image for internal use
+            try:
+                pil_img_reloaded = Image.open(cache_file).convert('RGB')
+                img_reloaded = np.array(pil_img_reloaded)[:, :, ::-1].copy()
+            except Exception as e:
+                print(f"Warning: reloading thumbnail failed for frame {frame_no}: {e}")
+                img_reloaded = None
 
             while len(self.all_thumbnails_data) <= idx:
                 self.all_thumbnails_data.append((None, None, None))
-            self.all_thumbnails_data[idx] = (frame_no, img, timestamp)
-
+            self.all_thumbnails_data[idx] = (frame_no, img_reloaded, timestamp)
             page_start = (self.current_page - 1) * self.total_per_page
             page_end = page_start + self.total_per_page
             if page_start <= idx < page_end:
@@ -373,10 +382,6 @@ class MovieGridViewer(QtWidgets.QWidget):
     def update_page_label(self):
         self.page_label.setText(f"Page {self.current_page} / {self.total_pages}")
 
-    #def open_frame_viewer(self, frame_number, frame_img):
-    #    self.viewer = FrameViewer(frame_number, frame_img)
-    #    self.viewer.show()
-        
     def open_frame_viewer(self, frame_number, _):
         cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():
@@ -390,7 +395,6 @@ class MovieGridViewer(QtWidgets.QWidget):
             return
         self.viewer = FrameViewer(frame_number, frame)
         self.viewer.show()
-
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -428,7 +432,6 @@ class MovieGridViewer(QtWidgets.QWidget):
         else:
             super().wheelEvent(event)
 
-
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Video Frames Grid Viewer with Pagination, multiprocessing and cache")
@@ -438,14 +441,16 @@ def main():
     parser.add_argument("--Rows", type=int, default=5, help="Number of rows per page")
     parser.add_argument("--Workers", type=int, default=4, help="Number of parallel worker processes")
     parser.add_argument("--Pages", type=int, default=None, help="Number of pages to display (optional)")
+    parser.add_argument("--ThumbFormat", type=str, choices=["PNG", "HEIF", "AVIF"], default="PNG",
+                        help="Format for saved thumbnails (PNG, HEIF, AVIF)")
     args = parser.parse_args()
 
-    multiprocessing.set_start_method('spawn', force=True)  
+    multiprocessing.set_start_method('spawn', force=True)
+
     app = QtWidgets.QApplication(sys.argv)
     video_full_path = os.path.join(args.Path, args.Name)
-    viewer = MovieGridViewer(video_full_path, args.Cols, args.Rows, args.Workers, args.Pages)
+    viewer = MovieGridViewer(video_full_path, args.Cols, args.Rows, args.Workers, args.Pages, args.ThumbFormat)
     sys.exit(app.exec_())
-
 
 if __name__ == "__main__":
     main()
