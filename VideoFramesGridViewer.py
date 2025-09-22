@@ -22,6 +22,65 @@ import multiprocessing
 # Register HEIF opener (no register_avif_opener in newer pillow-heif)
 register_heif_opener()
 
+
+def view_picture_zoom(img):
+    zoom_scale = 1.0
+    zoom_min = 1.0
+    zoom_max = 15.0
+    mouse_x, mouse_y = -1, -1
+    height, width = img.shape[:2]
+    
+    def mouse_callback(event, x, y, flags, param):
+        nonlocal zoom_scale, mouse_x, mouse_y
+        mouse_x, mouse_y = x, y
+        if event == cv2.EVENT_MOUSEWHEEL:
+            if flags > 0:
+                zoom_scale = min(zoom_scale + 0.1, zoom_max)
+            else:
+                zoom_scale = max(zoom_scale - 0.1, zoom_min)
+
+    def get_zoomed_image(image, scale, center_x, center_y):
+        h, w = image.shape[:2]
+        new_w = int(w / scale)
+        new_h = int(h / scale)
+
+        left = max(center_x - new_w // 2, 0)
+        right = min(center_x + new_w // 2, w)
+        top = max(center_y - new_h // 2, 0)
+        bottom = min(center_y + new_h // 2, h)
+
+        if right - left < new_w:
+            if left == 0:
+                right = new_w
+            elif right == w:
+                left = w - new_w
+        if bottom - top < new_h:
+            if top == 0:
+                bottom = new_h
+            elif bottom == h:
+                top = h - new_h
+
+        cropped = image[top:bottom, left:right]
+        zoomed = cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
+        return zoomed
+
+    cv2.namedWindow('Picture Zoom', cv2.WINDOW_NORMAL)
+    ratio = width / height
+    cv2.resizeWindow('Picture Zoom', int (600 * ratio), 600)
+    cv2.setMouseCallback('Picture Zoom', mouse_callback)
+
+    while True:
+        if mouse_x == -1 and mouse_y == -1:
+            mouse_x, mouse_y = width // 2, height // 2
+
+        zoomed_img = get_zoomed_image(img, zoom_scale, mouse_x, mouse_y)
+        cv2.imshow('Picture Zoom', zoomed_img)
+
+        key = cv2.waitKey(20) & 0xFF
+        if key == 27:
+            break
+    cv2.destroyAllWindows()
+
 def extract_thumbnail(params):
     video_path, frame_no, thumb_size, fps = params
     cap = cv2.VideoCapture(video_path)
@@ -97,6 +156,7 @@ class FrameViewer(QtWidgets.QWidget):
         super().__init__()
         self.setWindowTitle(f"Frame {frame_number} Viewer")
         img_rgb = cv2.cvtColor(frame_img, cv2.COLOR_BGR2RGB)
+        view_picture_zoom(img_rgb)
         h, w, ch = img_rgb.shape
         bytes_per_line = ch * w
         qimg = QtGui.QImage(img_rgb.data, w, h, bytes_per_line, QtGui.QImage.Format_RGB888)
@@ -108,6 +168,7 @@ class FrameViewer(QtWidgets.QWidget):
         self.setLayout(layout)
         self.resize(820, 620)
         self.show()
+
 
 class MovieGridViewer(QtWidgets.QWidget):
     def __init__(self, video_path, cols, rows, num_workers, max_pages=None, thumbnail_format="PNG"):
@@ -393,8 +454,12 @@ class MovieGridViewer(QtWidgets.QWidget):
         if not ret:
             QtWidgets.QMessageBox.critical(self, "Error", f"Cannot read frame {frame_number} in high-res.")
             return
-        self.viewer = FrameViewer(frame_number, frame)
-        self.viewer.show()
+        
+        #self.viewer = FrameViewer(frame_number, frame)
+        #self.viewer.show()
+        
+        view_picture_zoom(frame)
+
 
     def keyPressEvent(self, event):
         key = event.key()
