@@ -29,16 +29,22 @@ def view_picture_zoom(img):
     zoom_max = 15.0
     mouse_x, mouse_y = -1, -1
     height, width = img.shape[:2]
+    qLoop = True
     
     def mouse_callback(event, x, y, flags, param):
-        nonlocal zoom_scale, mouse_x, mouse_y
+        nonlocal zoom_scale, mouse_x, mouse_y, qLoop 
         mouse_x, mouse_y = x, y
+                    
         if event == cv2.EVENT_MOUSEWHEEL:
             if flags > 0:
                 zoom_scale = min(zoom_scale + 0.1, zoom_max)
             else:
                 zoom_scale = max(zoom_scale - 0.1, zoom_min)
+                
+        if event == cv2.EVENT_RBUTTONDOWN:
+            qLoop = False
 
+                
     def get_zoomed_image(image, scale, center_x, center_y):
         h, w = image.shape[:2]
         new_w = int(w / scale)
@@ -69,7 +75,7 @@ def view_picture_zoom(img):
     cv2.resizeWindow('Picture Zoom', int (600 * ratio), 600)
     cv2.setMouseCallback('Picture Zoom', mouse_callback)
 
-    while True:
+    while qLoop:
         if mouse_x == -1 and mouse_y == -1:
             mouse_x, mouse_y = width // 2, height // 2
 
