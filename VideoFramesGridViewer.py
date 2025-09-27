@@ -18,18 +18,54 @@ import pillow_avif  # AVIF support plugin for Pillow
 from PyQt5 import QtWidgets, QtGui, QtCore
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
+from pathlib import Path 
 
 # Register HEIF opener (no register_avif_opener in newer pillow-heif)
 register_heif_opener()
 
 
-def view_picture_zoom(img):
+def CV_Sharpen2d(source, alpha, gamma, num_op):
+    def sharpen_kernel(src):
+        kernel = np.array([[0, -1, 0],
+                           [-1, 5, -1],
+                           [0, -1, 0]])
+        return cv2.filter2D(src, -1, kernel)
+
+    dst = sharpen_kernel(source)
+
+    if num_op == 1:
+        source_filtered = cv2.GaussianBlur(source, (3, 3), 0)
+    elif num_op == 2:
+        source_filtered = cv2.blur(source, (9, 9))
+    else:
+        source_filtered = source.copy()
+
+    dst_img = cv2.addWeighted(source_filtered, alpha, dst, 1.0 - alpha, gamma)
+    return dst_img
+
+def CV_EnhanceColor(img):
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.float32)
+    hsv[..., 1] = np.clip(hsv[..., 1] * 1.3, 0, 255) 
+    hsv[..., 2] = np.clip(hsv[..., 2] * 1.1, 0, 255)  
+    return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+
+def CV_Vibrance2D(img, saturation_scale=1.3, brightness_scale=1.1, apply=True):
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.float32)
+    hsv[..., 1] = np.clip(hsv[..., 1] * saturation_scale, 0, 255)
+    hsv[..., 2] = np.clip(hsv[..., 2] * brightness_scale, 0, 255)
+    return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+def view_picture_zoom(img,video_path):
     zoom_scale = 1.0
     zoom_min = 1.0
     zoom_max = 15.0
     mouse_x, mouse_y = -1, -1
     height, width = img.shape[:2]
     qLoop = True
+    qSharpen = False
+    qEnhanceColor = False
+    qVibrance = False
     
     def mouse_callback(event, x, y, flags, param):
         nonlocal zoom_scale, mouse_x, mouse_y, qLoop 
@@ -80,11 +116,35 @@ def view_picture_zoom(img):
             mouse_x, mouse_y = width // 2, height // 2
 
         zoomed_img = get_zoomed_image(img, zoom_scale, mouse_x, mouse_y)
+        
+        zoomed_img = CV_Sharpen2d(zoomed_img, 0.1, 0.0,  1)
+        if zoom_scale > 7 :
+            zoomed_img = CV_Sharpen2d(zoomed_img, 0.3, 0.0,  1)         
+        if qEnhanceColor :
+            zoomed_img = CV_EnhanceColor(zoomed_img)
+        if qVibrance :
+            zoomed_img = CV_Vibrance2D(zoomed_img)
+
         cv2.imshow('Picture Zoom', zoomed_img)
 
         key = cv2.waitKey(20) & 0xFF
         if key == 27:
             break
+        elif key == ord('s'):
+            path = Path(video_path).parent
+            new_path = path / "Screenshot"
+            new_path .mkdir(parents=True, exist_ok=True)
+            date_time = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+            outputName = "Noname"
+            outputName = f"{outputName}_{date_time}.jpg"
+            outputName = Path(new_path) / outputName
+            cv2.imwrite(outputName, zoomed_img)
+        elif key == ord('x'):  
+            qSharpen = not qSharpen
+        elif key == ord('e'):  
+            qEnhanceColor = not qEnhanceColor
+        elif key == ord('v'):  
+            qVibrance = not qVibrance
     cv2.destroyAllWindows()
 
 def extract_thumbnail(params):
@@ -464,7 +524,7 @@ class MovieGridViewer(QtWidgets.QWidget):
         #self.viewer = FrameViewer(frame_number, frame)
         #self.viewer.show()
         
-        view_picture_zoom(frame)
+        view_picture_zoom(frame,self.video_path)
 
 
     def keyPressEvent(self, event):
