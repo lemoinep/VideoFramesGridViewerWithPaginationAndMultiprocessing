@@ -105,11 +105,24 @@ def view_picture_zoom(img,video_path):
         cropped = image[top:bottom, left:right]
         zoomed = cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
         return zoomed
-
-    cv2.namedWindow('Picture Zoom', cv2.WINDOW_NORMAL)
+    
+    window_name = 'Picture Zoom'
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     ratio = width / height
-    cv2.resizeWindow('Picture Zoom', int (600 * ratio), 600)
-    cv2.setMouseCallback('Picture Zoom', mouse_callback)
+    lh = 800
+    lw = int(lh * ratio)
+    cv2.resizeWindow(window_name, lw, lh)
+    cv2.setMouseCallback(window_name, mouse_callback)
+    
+    screen_width = cv2.getWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN) or 1920  
+    screen_height = cv2.getWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN) or 1080  
+
+    start_x = int((screen_width - lw) / 2)
+    start_y = int((screen_height - lh) / 2)
+    cv2.moveWindow(window_name, start_x, start_y)
+    
+        
+    cv2.setMouseCallback(window_name, mouse_callback)
 
     while qLoop:
         if mouse_x == -1 and mouse_y == -1:
@@ -117,9 +130,11 @@ def view_picture_zoom(img,video_path):
 
         zoomed_img = get_zoomed_image(img, zoom_scale, mouse_x, mouse_y)
         
-        zoomed_img = CV_Sharpen2d(zoomed_img, 0.1, 0.0,  1)
-        if zoom_scale > 7 :
-            zoomed_img = CV_Sharpen2d(zoomed_img, 0.3, 0.0,  1)         
+        if qSharpen:
+            zoomed_img = CV_Sharpen2d(zoomed_img, 0.1, 0.0,  1)
+            if zoom_scale > 7 :
+                zoomed_img = CV_Sharpen2d(zoomed_img, 0.3, 0.0,  1)         
+        
         if qEnhanceColor :
             zoomed_img = CV_EnhanceColor(zoomed_img)
         if qVibrance :
@@ -145,6 +160,9 @@ def view_picture_zoom(img,video_path):
             qEnhanceColor = not qEnhanceColor
         elif key == ord('v'):  
             qVibrance = not qVibrance
+        elif key == ord('z'):  
+            zoom_scale = 1.0
+            
     cv2.destroyAllWindows()
 
 def extract_thumbnail(params):
