@@ -10,6 +10,7 @@ import sys
 import os
 import cv2
 import numpy as np
+import time
 import datetime
 import configparser
 from PIL import Image, ImageQt
@@ -160,7 +161,7 @@ def view_picture_zoom(img,video_path):
             qEnhanceColor = not qEnhanceColor
         elif key == ord('v'):  
             qVibrance = not qVibrance
-        elif key == ord('z'):  
+        elif key == ord('.'):  
             zoom_scale = 1.0
             
     cv2.destroyAllWindows()
@@ -305,7 +306,9 @@ class MovieGridViewer(QtWidgets.QWidget):
         approx_total_vignettes = self.total_per_page * pages_to_use
         step = max(1, (self.frame_count - 1) // (approx_total_vignettes - 1))
         self.all_frames_to_extract = [i * step for i in range(approx_total_vignettes)]
-        self.all_frames_to_extract[-1] = self.frame_count - 1
+        
+        #self.all_frames_to_extract[-1] = self.frame_count - 1  # ****See...
+        
         calculated_total_pages = (len(self.all_frames_to_extract) + self.total_per_page - 1) // self.total_per_page
         if self.max_pages is not None and self.max_pages > 0:
             self.total_pages = min(calculated_total_pages, self.max_pages)
@@ -423,7 +426,7 @@ class MovieGridViewer(QtWidgets.QWidget):
                     self.all_thumbnails_data.append((frame_no, img, timestamp))
                     loaded_count += 1
                 except Exception as e:
-                    print(f"Erreur chargement image {cache_file}: {e}")
+                    print(f"Error load Picture {cache_file}: {e}")
                     self.all_thumbnails_data.append((frame_no, None, None))
             else:
                 self.all_thumbnails_data.append((frame_no, None, None))
@@ -527,22 +530,24 @@ class MovieGridViewer(QtWidgets.QWidget):
     def update_page_label(self):
         self.page_label.setText(f"Page {self.current_page} / {self.total_pages}")
 
+
     def open_frame_viewer(self, frame_number, _):
         cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():
             QtWidgets.QMessageBox.critical(self, "Error", "Cannot open video to load high-res frame.")
             return
+    
+        if frame_number >= self.frame_count:
+            frame_number = max(0, self.frame_count)
+     
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-        ret, frame = cap.read()
+        ret, frame = cap.read()   
         cap.release()
+        
         if not ret:
             QtWidgets.QMessageBox.critical(self, "Error", f"Cannot read frame {frame_number} in high-res.")
             return
-        
-        #self.viewer = FrameViewer(frame_number, frame)
-        #self.viewer.show()
-        
-        view_picture_zoom(frame,self.video_path)
+        view_picture_zoom(frame, self.video_path)
 
 
     def keyPressEvent(self, event):

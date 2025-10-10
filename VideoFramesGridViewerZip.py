@@ -155,7 +155,7 @@ def view_picture_zoom(img,video_path):
             qEnhanceColor = not qEnhanceColor
         elif key == ord('v'):  
             qVibrance = not qVibrance
-        elif key == ord('z'):  
+        elif key == ord('.'):  
             zoom_scale = 1.0
             
     cv2.destroyAllWindows()
@@ -301,7 +301,9 @@ class MovieGridViewer(QtWidgets.QWidget):
         approx_total_vignettes = self.total_per_page * pages_to_use
         step = max(1, (self.frame_count - 1) // (approx_total_vignettes - 1))
         self.all_frames_to_extract = [i * step for i in range(approx_total_vignettes)]
+        
         #self.all_frames_to_extract[-1] = self.frame_count - 1      # ****See...
+        
         calculated_total_pages = (len(self.all_frames_to_extract) + self.total_per_page - 1) // self.total_per_page
         if self.max_pages is not None and self.max_pages > 0:
             self.total_pages = min(calculated_total_pages, self.max_pages)
@@ -452,14 +454,14 @@ class MovieGridViewer(QtWidgets.QWidget):
                     pil_img.save(img_bytes, format=self.thumbnail_format)
                     zf.writestr(file_name, img_bytes.getvalue())
             except Exception as e:
-                print(f"Erreur écriture vignette dans le fichier ZIP: {e}")
+                print(f"Error Save Tumb in file ZIP: {e}")
             try:
                 with zipfile.ZipFile(self.zip_cache_path, 'r') as zf:
                     img_data = zf.read(file_name)
                     pil_img_reloaded = Image.open(io.BytesIO(img_data)).convert('RGB')
                     img_reloaded = np.array(pil_img_reloaded)[:, :, ::-1].copy()
             except Exception as e:
-                print(f"Erreur relecture vignette ZIP {file_name}: {e}")
+                print(f"Error Load Tumb ZIP {file_name}: {e}")
                 img_reloaded = None
             while len(self.all_thumbnails_data) <= idx:
                 self.all_thumbnails_data.append((None, None, None))
@@ -518,59 +520,24 @@ class MovieGridViewer(QtWidgets.QWidget):
     def update_page_label(self):
         self.page_label.setText(f"Page {self.current_page} / {self.total_pages}")
 
-    def open_frame_viewer_old(self, frame_number, _):
-        cap = cv2.VideoCapture(self.video_path)
-        if not cap.isOpened():
-            QtWidgets.QMessageBox.critical(self, "Error", "Cannot open video to load high-res frame.")
-            return
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-        ret, frame = cap.read()
-        cap.release()
-        if not ret:
-            QtWidgets.QMessageBox.critical(self, "Error", f"Cannot read frame {frame_number} in high-res.")
-            return
-        
-        #self.viewer = FrameViewer(frame_number, frame)
-        #self.viewer.show()
-        
-        view_picture_zoom(frame,self.video_path)
-        
-        
+
     def open_frame_viewer(self, frame_number, _):
         cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():
             QtWidgets.QMessageBox.critical(self, "Error", "Cannot open video to load high-res frame.")
             return
     
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fallback = 1
-        if self.video_path.lower().endswith('.webm'):
-            fallback = 1  # See...
-            
-        #self.all_frames_to_extract[-1] = max(0, self.frame_count - 1 - fallback) A VOIR
-        
-        if frame_number >= total_frames:
-            frame_number = max(0, total_frames - fallback)
-        
+        if frame_number >= self.frame_count:
+            frame_number = max(0, self.frame_count)
+     
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-        ret, frame = cap.read()
-        
-        if not ret and frame_number > total_frames - fallback:
-            frame_number = max(0, total_frames - fallback)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-            ret, frame = cap.read()
-        
+        ret, frame = cap.read()   
         cap.release()
         
         if not ret:
             QtWidgets.QMessageBox.critical(self, "Error", f"Cannot read frame {frame_number} in high-res.")
             return
-        
-        #self.viewer = FrameViewer(frame_number, frame)
-        #self.viewer.show()
-        
         view_picture_zoom(frame, self.video_path)
-
 
 
     def keyPressEvent(self, event):
